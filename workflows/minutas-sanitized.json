@@ -1,0 +1,333 @@
+{
+  "name": "Minutas Beauty Biweekly/Monthly",
+  "nodes": [
+    {
+      "parameters": {
+        "messages": {
+          "values": [
+            {
+              "content": "=<TASK>\nEres un experto en comunicación corporativa. Tu especialidad es leer minutas de reunión y generar un correo profesional en HTML, claro, ejecutivo y visualmente atractivo. Devuelve UN ÚNICO objeto JSON válido.\n</TASK>\n\n<CONTEXTO>\nLa información para construir el asunto y el título visual se debe extraer del siguiente dato (asunto del correo original):\n---\n{{ $node[\"Obtener Gmail\"].json.subject }}\n---\n</CONTEXTO>\n\n<INPUT_TEXT>\nEl contenido base de la minuta es el siguiente:\n---\n{{ $node[\"Obtener Documento\"].json.content }}\n---\n</INPUT_TEXT>\n\n<OUTPUT_STRUCTURE>\nTu respuesta DEBE ser un único objeto JSON válido, sin texto adicional.\nEstructura exacta:\n{\n  \"asunto\": \"string\",\n  \"cuerpo_html\": \"string\"\n}\n</OUTPUT_STRUCTURE>\n\n<RULES>\nSigue estas reglas estrictamente. TODO lo aquí indicado es obligatorio para que la salida cumpla con el formato aprobado.\n\n1. **Asunto**\n   - Extrae del CONTEXTO (subject) el nombre de la reunión y la fecha en formato DD/MM.\n   - Formato exacto:  \n     \"Minuta [Nombre de la Reunión] [Fecha]\"\n\n2. **Título visual (HEADER)**\n   - Reemplaza `<PLACEHOLDER_TITULO>` en el HTML por el texto del campo \"asunto\" seguido del emoji 📝.\n\n3. **Saludo inicial**\n   - El saludo DEBE ser exactamente (con salto de línea):\n     ¡Buen día equipo!\n     Les dejo los puntos que revisamos en la reunión\n\n4. **Resumen**\n   - Encabezado EXACTO de la caja: **\"Resumen\"** (solo esa palabra).\n   - Máximo **2 frases**; muy conciso, ejecutivo, menciona líneas principales tratadas (ej. KPIs, Enhanced Content, VTO) sin bullets.\n   - **ÚNICO** elemento azul de la plantilla: la barra lateral azul del cuadro \"Resumen\".\n\n5. **Sección \"Temas\"**\n   - Título EXACTO: **\"Temas\"**.\n   - Cada tema debe ir en su **propia tabla visual** (dos columnas). No uses la palabra \"Accionables\".\n\n6. **Lista canónica, normalización y mapping (OBLIGATORIO)**\n   - Antes de producir tablas, mapea y normaliza todos los posibles encabezados detectados a los siguientes títulos canónicos (usa exactamente estas etiquetas cuando aplique). Si el subject contiene \"Beauty\" prioriza la lista Beauty; si contiene \"Fashion\" prioriza la lista Fashion; si ambas/no queda claro, prioriza Beauty.\n\n   **Beauty — canonical (prioridad):**\n   - Premium Navigation\n   - Enhanced Content\n   - Fakes\n   - Virtual Try On (VTO)\n   - Shoppable Images (Routines)\n   - Virtual Kits\n   - Shop a Gift\n   - Beauty Assistant (Verdi Bot)\n   - KPIs\n\n   **Fashion — canonical (prioridad):**\n   - KPIs\n   - Virtual Try On (VTO)\n   - Tendencias\n   - Stories\n   - Search by Image\n   - Clips\n   - Shop a gift\n   - Photo studio\n\n   - **Reglas de matching y normalización** (aplicarlas estrictamente):\n     a) Coincidencia exacta case-insensitive → usa el canónico.  \n     b) Sinónimos/abreviaturas → mapear al canónico (ej.: `VTO` → `Virtual Try On (VTO)`; `Enhanced content`/`EC` → `Enhanced Content`; `Verdi`/`Beauty Assistant` → `Beauty Assistant (Verdi Bot)`; `KPI`/`KPIS` → `KPIs`; `Shop a Gift`/`Shop a gift` → `Shop a Gift`).  \n     c) Si un fragmento contiene más de un tema canónico, **crea tablas separadas** (no combinar).  \n     d) Si aparece un tópico NO listado en canónicas, créalo como tema separado con capitalización tipo título (p. ej. \"Gifting & Sampling\") y no lo fusiones con un canónico.\n\n   - **Resultado:** todos los encabezados de tema en el HTML DEBEN usar los títulos canónicos indicados (cuando corresponda) o un nombre nuevo correctamente capitalizado.\n\n7. **Orden y priorización**\n   - Ordena las tablas según la lista canónica priorizada (Beauty o Fashion) y, si faltan, añade temas adicionales en orden de aparición en `INPUT_TEXT`.\n\n8. **Estructura por tema (visual)**\n   - Tabla de dos columnas:\n     - **Izquierda (~72%)**: marcador vertical **gris clarito** + tarjeta con:\n       - Encabezado del tema (usar TÍTULO CANÓNICO exacto).\n       - Lista de bullets con puntos clave (frases cortas).\n     - **Derecha (~28%)**: tarjeta `Material:` con valor `-` por defecto.\n   - Ambas tarjetas con **sombreado gris tenue**, bordes redondeados y pequeña sombra (inline styles).\n\n9. **Despedida**\n   - Al final del `cuerpo_html` usar EXACTAMENTE:\n     Muchas gracias, ¡saludos!\n     Rodri\n\n10. **Salida**\n    - Responde SOLO con el objeto JSON (nada fuera de él).\n    - `cuerpo_html` debe contener el HTML completo e inline (placeholders: `<PLACEHOLDER_TITULO>`, `[RESUMEN]`, `<PLACEHOLDER_ACCIONABLES>`).  \n    - No inventar información: usa solo lo presente en `INPUT_TEXT`.\n\n</RULES>\n\n<TEMPLATE>\n<!DOCTYPE html>\n<html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head>\n<body style=\"margin:0;background:#f5f5f5;font-family:'Lato',Arial,sans-serif;color:#222;\">\n<center>\n<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f5f5f5;padding:24px 0;\">\n<tr><td align=\"center\">\n<table width=\"800\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:800px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,0.06);\">\n\n<!-- HEADER -->\n<tr>\n<td style=\"background:#FFF159;padding:22px 20px;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">\n    <tr>\n      <td width=\"90\" style=\"vertical-align:middle;padding-left:6px;\">\n        <img src=\"https://http2.mlstatic.com/frontend-assets/ml-web-navigation/ui-navigation/5.21.2/mercadolibre/logo__large_plus.png\" width=\"86\" alt=\"Logo\" style=\"display:block;border:0;\">\n      </td>\n      <td align=\"center\" style=\"vertical-align:middle;\">\n        <h1 style=\"margin:0;font-size:22px;font-weight:900;color:#222;\"><PLACEHOLDER_TITULO></h1>\n      </td>\n      <td width=\"86\"></td>\n    </tr>\n  </table>\n</td>\n</tr>\n\n<!-- SALUDO + RESUMEN -->\n<tr>\n<td style=\"padding:26px 36px;\">\n  <p style=\"font-weight:700;margin:0 0 8px 0;\">¡Buen día equipo!<br>Les dejo los puntos que revisamos en la reunión</p>\n\n  <!-- RESUMEN: barra azul lateral (ÚNICO azul) -->\n  <div style=\"margin-top:14px;display:flex;align-items:stretch;border-radius:8px;\">\n    <div style=\"width:6px;background:#3483fa;border-radius:3px 0 0 3px;\"></div>\n    <div style=\"flex:1;background:#ffffff;border:1px solid #e8e8e8;border-left:none;border-radius:0 8px 8px 0;padding:16px;\">\n      <strong style=\"display:block;margin-bottom:8px;font-size:15px;\">Resumen</strong>\n      <p style=\"margin:0;font-size:15px;line-height:1.5;color:#333;\">[RESUMEN]</p>\n    </div>\n  </div>\n</td>\n</tr>\n\n<!-- TEMAS -->\n<tr>\n<td style=\"padding:12px 36px 28px 36px;\">\n  <h2 style=\"margin:6px 0 8px 0;font-size:20px;font-weight:900;color:#111;\">Temas</h2>\n  <div style=\"height:4px;width:56px;background:#dcdcdc;border-radius:4px;margin-bottom:18px;\"></div>\n\n  <!-- PLACEHOLDER_ACCIONABLES (EL LLM INYECTA AQUÍ N BLOQUES) -->\n  <PLACEHOLDER_ACCIONABLES>\n\n  </PLACEHOLDER_ACCIONABLES>\n\n</td>\n</tr>\n\n<!-- FOOTER -->\n<tr>\n<td style=\"padding:18px 36px;\">\n  <p style=\"margin:0;font-size:15px;color:#333;\">Muchas gracias, ¡saludos!<br><strong>Rodri</strong></p>\n</td>\n</tr>\n\n<tr>\n<td style=\"background:#f0f0f0;padding:12px;text-align:center;font-size:12px;color:#777;border-top:1px solid #e6e6e6;\">\n  &copy; 2025 Verdi Flows. Reporte generado automáticamente 🤖\n</td>\n</tr>\n\n</table>\n</td></tr>\n</table>\n</center>\n</body></html>\n</TEMPLATE>\""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e10c450a-d0ad-40fe-86cd-6a5d61aaf658",
+      "name": "OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "position": [
+        -96,
+        672
+      ],
+      "typeVersion": 1.8
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": [
+          "Label_6355316479329042146"
+        ]
+      },
+      "id": "faf31b37-bacd-4bf9-b85c-4a3b392cd092",
+      "name": "Etiqueta",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        -768,
+        672
+      ],
+      "webhookId": "<REDACTED>",
+      "typeVersion": 2.1,
+      "credentials": {
+        "googleGenericOAuth2Api": "<REDACTED_CREDENTIAL>"
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ JSON.parse($('OpenAI').item.json.message.content).asunto }}",
+        "emailType": "html",
+        "message": "={{ JSON.parse($('OpenAI').item.json.message.content).cuerpo_html }}",
+        "options": {}
+      },
+      "id": "1410290f-6f5c-4ac6-bebb-0e2b21e27b31",
+      "name": "Borrador",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        256,
+        672
+      ],
+      "webhookId": "<REDACTED>",
+      "executeOnce": true,
+      "typeVersion": 2.1,
+      "credentials": {
+        "googleGenericOAuth2Api": "<REDACTED_CREDENTIAL>"
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "* 7-19 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "d1cbc245-fe4a-46ae-897a-1571baec7417",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -1216,
+        672
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "filters": {
+          "readStatus": "unread",
+          "sender": "gemini-notes@google.com"
+        }
+      },
+      "id": "2417e7f6-5d90-469a-b457-c164c035efdc",
+      "name": "Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        -992,
+        672
+      ],
+      "webhookId": "<REDACTED>",
+      "typeVersion": 2.1,
+      "credentials": {
+        "googleGenericOAuth2Api": "<REDACTED_CREDENTIAL>"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "documentURL": "={{$node[\"Obtener Gmail\"].json.html.match(/document\\/d\\/([a-zA-Z0-9_-]+)/)[1]}}\n"
+      },
+      "id": "626f8194-d5eb-442b-89af-3260c2f0757e",
+      "name": "Obtener Documento",
+      "type": "n8n-nodes-base.googleDocs",
+      "position": [
+        -320,
+        672
+      ],
+      "typeVersion": 2,
+      "credentials": {
+        "googleGenericOAuth2Api": "<REDACTED_CREDENTIAL>"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.id }}",
+        "simple": false,
+        "options": {}
+      },
+      "id": "230429d8-4558-49e4-95c4-155178e44c59",
+      "name": "Obtener Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        -544,
+        672
+      ],
+      "webhookId": "<REDACTED>",
+      "typeVersion": 2.1,
+      "credentials": {
+        "googleGenericOAuth2Api": "<REDACTED_CREDENTIAL>"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "markAsRead",
+        "messageId": "={{ $('Gmail').item.json.id }}"
+      },
+      "id": "107151ec-f928-4431-a8f2-3537b6651f1b",
+      "name": "Marcar como Leído",
+      "type": "n8n-nodes-base.gmail",
+      "position": [
+        480,
+        672
+      ],
+      "webhookId": "<REDACTED>",
+      "typeVersion": 2.1,
+      "credentials": {
+        "googleGenericOAuth2Api": "<REDACTED_CREDENTIAL>"
+      }
+    },
+    {
+      "parameters": {
+        "content": "**Opcional**\n\nVayan a Gmail y creen una etiqueta (por ejemplo, \"Notas Gemini\"). Luego, regresen a esta sección y en el campo \"Label Names or IDs\", seleccionen la etiqueta que crearon (puede tener el nombre que deseen).",
+        "height": 240,
+        "width": 190
+      },
+      "id": "7eb71755-47ff-43ad-97ea-550bfc2053aa",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -896,
+        416
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "**Editar Prompt**\n\nCambiar mi nombre por el suyo. \n\nTip: ayudate de CTRL + F",
+        "height": 240,
+        "width": 190
+      },
+      "id": "35f9336f-6075-49b2-b09f-900682b1452e",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -304,
+        416
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "**Activar Flujo**\n\nGuarda los cambios y haz clic en el botón \"Inactive\" para cambiarlo a \"Active\" (se volverá azul).",
+        "height": 156,
+        "width": 198,
+        "color": 4
+      },
+      "id": "87976793-a7b9-492e-9e67-26e4971cc09c",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        96,
+        448
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "**Credenciales**\n\nRecuerden que en cada nodo tienen que colocar sus credenciales para que el flujo les funcione! (menos en el primero).",
+        "height": 236,
+        "width": 182,
+        "color": 5
+      },
+      "id": "067c9cdc-67e8-4342-bfd2-14154a90ee68",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1248,
+        416
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "Obtener doc\n\nPosteriormente obtienes el mail en tu etiqueta de gmail, y obtienes el documento",
+        "height": 128,
+        "width": 270,
+        "color": 5
+      },
+      "id": "79a2a9de-488d-4a9b-b6f4-5a2180cc650a",
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -656,
+        480
+      ],
+      "typeVersion": 1
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail": {
+      "main": [
+        [
+          {
+            "node": "Etiqueta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Borrador",
+            "type": "main",
+          "index": 0
+          }
+        ]
+      ]
+    },
+    "Borrador": {
+      "main": [
+        [
+          {
+            "node": "Marcar como Leído",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etiqueta": {
+      "main": [
+        [
+          {
+            "node": "Obtener Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Gmail": {
+      "main": [
+        [
+          {
+            "node": "Obtener Documento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener Documento": {
+      "main": [
+        [
+          {
+            "node": "OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "<REDACTED>",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "<REDACTED>"
+  },
+  "id": "H3MAnSb4TC3LJ9Il",
+  "tags": []
+}
