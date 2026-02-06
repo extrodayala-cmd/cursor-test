@@ -2,6 +2,46 @@
   "name": "query__melinda_core",
   "nodes": [
     {
+      "parameters": {},
+      "id": "manual-trigger-1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        200
+      ],
+      "notes": "Trigger manual para pruebas sin webhook.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "question",
+              "value": "en el site MLM, y la vertical de beauty cual es la afectación de vidriera"
+            },
+            {
+              "name": "execution_source",
+              "value": "manual"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-manual-1",
+      "name": "Set - Manual Question",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -980,
+        200
+      ],
+      "notes": "Pregunta manual para pruebas. Cambiala cuando quieras.",
+      "notesInFlow": true
+    },
+    {
       "parameters": {
         "path": "melinda/query",
         "httpMethod": "POST",
@@ -26,6 +66,10 @@
             {
               "name": "question",
               "value": "={{$json.question}}"
+            },
+            {
+              "name": "executionSource",
+              "value": "={{$json.execution_source || \"webhook\"}}"
             },
             {
               "name": "openaiApiKey",
@@ -127,7 +171,7 @@
     },
     {
       "parameters": {
-        "functionCode": "const cfg = $node[\"Set - Context & Placeholders\"].json;\nconst inData = $json || {};\nconst trackRaw = (inData.track || '').toString().toLowerCase();\nlet track = inData.track || 'Other';\nif (trackRaw.includes('fake') || trackRaw.includes('vidriera')) track = 'Fakes';\nif (trackRaw.includes('enhanced') || trackRaw === 'ec' || trackRaw.includes('ec')) track = 'Enhanced Content';\nconst f = inData.filters || {};\nconst filters = {\n  Fecha: f.Fecha || '',\n  Site: f.Site || 'all',\n  Vertical: f.Vertical || 'all',\n  Segmento: f.Segmento || 'all',\n  AGG1: f.AGG1 || '',\n  AGG2: f.AGG2 || '',\n  Domain: f.Domain || 'all',\n  Brand: f.Brand || 'all'\n};\nreturn [{\n  json: {\n    question: cfg.question,\n    track,\n    metric: inData.metric || '',\n    intent: inData.intent || 'descriptive',\n    filters,\n    openaiApiKey: cfg.openaiApiKey,\n    openaiModel: cfg.openaiModel,\n    tableauServer: cfg.tableauServer,\n    tableauSiteContentUrl: cfg.tableauSiteContentUrl,\n    tableauViewId: cfg.tableauViewId,\n    tableauPATName: cfg.tableauPATName,\n    tableauPATSecret: cfg.tableauPATSecret,\n    bqTable: cfg.bqTable,\n    bqProject: cfg.bqProject\n  }\n}];"
+        "functionCode": "const cfg = $node[\"Set - Context & Placeholders\"].json;\nconst inData = $json || {};\nconst trackRaw = (inData.track || '').toString().toLowerCase();\nlet track = inData.track || 'Other';\nif (trackRaw.includes('fake') || trackRaw.includes('vidriera')) track = 'Fakes';\nif (trackRaw.includes('enhanced') || trackRaw === 'ec' || trackRaw.includes('ec')) track = 'Enhanced Content';\nconst f = inData.filters || {};\nconst filters = {\n  Fecha: f.Fecha || '',\n  Site: f.Site || 'all',\n  Vertical: f.Vertical || 'all',\n  Segmento: f.Segmento || 'all',\n  AGG1: f.AGG1 || '',\n  AGG2: f.AGG2 || '',\n  Domain: f.Domain || 'all',\n  Brand: f.Brand || 'all'\n};\nreturn [{\n  json: {\n    question: cfg.question,\n    executionSource: cfg.executionSource || 'webhook',\n    track,\n    metric: inData.metric || '',\n    intent: inData.intent || 'descriptive',\n    filters,\n    openaiApiKey: cfg.openaiApiKey,\n    openaiModel: cfg.openaiModel,\n    tableauServer: cfg.tableauServer,\n    tableauSiteContentUrl: cfg.tableauSiteContentUrl,\n    tableauViewId: cfg.tableauViewId,\n    tableauPATName: cfg.tableauPATName,\n    tableauPATSecret: cfg.tableauPATSecret,\n    bqTable: cfg.bqTable,\n    bqProject: cfg.bqProject\n  }\n}];"
       },
       "id": "normalize-filters-1",
       "name": "Normalize Filters",
@@ -404,7 +448,7 @@
     },
     {
       "parameters": {
-        "functionCode": "const content = $json.choices?.[0]?.message?.content || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(content);\n} catch (e) {\n  parsed = { respuesta: 'No se pudo parsear la respuesta del modelo.', bullets: [], tabla: [], filtros: {}, fuente: 'N/A', _raw: content };\n}\nreturn [{ json: parsed }];"
+        "functionCode": "const content = $json.choices?.[0]?.message?.content || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(content);\n} catch (e) {\n  parsed = { respuesta: 'No se pudo parsear la respuesta del modelo.', bullets: [], tabla: [], filtros: {}, fuente: 'N/A', _raw: content };\n}\nconst execSource = $node[\"Normalize Filters\"].json.executionSource || 'webhook';\nparsed._executionSource = execSource;\nreturn [{ json: parsed }];"
       },
       "id": "parse-answer-1",
       "name": "Parse Answer JSON",
@@ -414,7 +458,7 @@
         1600,
         0
       ],
-      "notes": "Parsea JSON generado por OpenAI.",
+      "notes": "Parsea JSON generado por OpenAI y agrega fuente de ejecución.",
       "notesInFlow": true
     },
     {
@@ -432,6 +476,10 @@
             {
               "name": "track",
               "value": "={{$json.track}}"
+            },
+            {
+              "name": "_executionSource",
+              "value": "={{$node[\"Normalize Filters\"].json.executionSource}}"
             }
           ]
         },
@@ -446,6 +494,29 @@
         340
       ],
       "notes": "Fallback cuando no se detecta track valido.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json._executionSource}}",
+              "operation": "equal",
+              "value2": "webhook"
+            }
+          ]
+        }
+      },
+      "id": "if-webhook-1",
+      "name": "IF - Is Webhook",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        0
+      ],
+      "notes": "Si es webhook responde HTTP, si es manual termina sin error.",
       "notesInFlow": true
     },
     {
@@ -468,14 +539,49 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        1820,
-        0
+        1960,
+        -40
       ],
       "notes": "Respuesta final del webhook.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "noop-manual-1",
+      "name": "NoOp - Manual Output",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1960,
+        120
+      ],
+      "notes": "Salida final para ejecuciones manuales (sin webhook).",
       "notesInFlow": true
     }
   ],
   "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set - Manual Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Manual Question": {
+      "main": [
+        [
+          {
+            "node": "Set - Context & Placeholders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Webhook - Question": {
       "main": [
         [
@@ -659,7 +765,7 @@
       "main": [
         [
           {
-            "node": "Respond to Webhook",
+            "node": "IF - Is Webhook",
             "type": "main",
             "index": 0
           }
@@ -670,7 +776,25 @@
       "main": [
         [
           {
+            "node": "IF - Is Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Is Webhook": {
+      "main": [
+        [
+          {
             "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NoOp - Manual Output",
             "type": "main",
             "index": 0
           }
