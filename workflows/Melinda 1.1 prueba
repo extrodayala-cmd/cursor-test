@@ -1,0 +1,465 @@
+[
+  {
+    "name": "query__melinda_core",
+    "nodes": [
+      {
+        "parameters": {
+          "path": "melinda/query",
+          "httpMethod": "POST",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "webhook-node-1",
+        "name": "Webhook - Question",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 1,
+        "position": [
+          -1200,
+          0
+        ],
+        "notes": "Entrada HTTP. Espera {\"question\":\"...\"}. PROTEGE en prod (HMAC header / token / auth).",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "values": {
+            "string": [
+              {
+                "name": "question",
+                "value": "={{$json.question}}"
+              },
+              {
+                "name": "openaiApiKey",
+                "value": "<USE_N8N_CREDENTIAL_OPENAI>"
+              },
+              {
+                "name": "openaiModel",
+                "value": "gpt-4o-mini"
+              },
+              {
+                "name": "tableauServer",
+                "value": "https://<TABLEAU_SERVER>"
+              },
+              {
+                "name": "tableauSiteContentUrl",
+                "value": "<TABLEAU_SITE_CONTENT_URL>"
+              },
+              {
+                "name": "tableauViewId",
+                "value": "<TABLEAU_VIEW_ID>"
+              },
+              {
+                "name": "tableauPATName",
+                "value": "<USE_N8N_CREDENTIAL_TABLEAU>"
+              },
+              {
+                "name": "tableauPATSecret",
+                "value": "<USE_N8N_CREDENTIAL_TABLEAU>"
+              },
+              {
+                "name": "bqTable",
+                "value": "<BQ_TABLE>"
+              },
+              {
+                "name": "bqProject",
+                "value": "<BQ_PROJECT_ID>"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "set-node-1",
+        "name": "Set - Context & Placeholders",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 2,
+        "position": [
+          -980,
+          0
+        ],
+        "notes": "Placeholders para credenciales y config. Configure las credenciales en n8n UI.",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "url": "https://api.openai.com/v1/chat/completions",
+          "method": "POST",
+          "sendBody": true,
+          "jsonParameters": true,
+          "bodyParametersJson": "={{ { model: $json.openaiModel, temperature: 0.2, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'Eres Melinda. Extrae filtros y devuelve SOLO JSON valido. Estructura: {\"track\":\"Fakes|Enhanced Content|Other\",\"metric\":\"string|empty\",\"filters\":{\"Fecha\":\"YYYY-MM-DD:YYYY-MM-DD|empty\",\"Site\":\"string|all\",\"Vertical\":\"string|all\",\"Segmento\":\"string|all\",\"AGG1\":\"string|empty\",\"AGG2\":\"string|empty\",\"Domain\":\"string|all\",\"Brand\":\"string|all\"},\"intent\":\"descriptive|comparison|trend\"} Reglas: - Si menciona fakes o afectacion de vidriera, track = Fakes. - Si menciona EC o enhanced content, track = Enhanced Content. - Si no hay fecha, Fecha vacio. - No inventes valores.' }, { role: 'user', content: $json.question } ] } }}",
+          "headerParametersUi": {
+            "parameter": [
+              {
+                "name": "Authorization",
+                "value": "={{'Bearer ' + $json.openaiApiKey}}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "openai-parse-1",
+        "name": "OpenAI - Parse Intent",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          -740,
+          0
+        ],
+        "notes": "Parsea pregunta a filtros. Configure credencial OpenAI en n8n (no en Set node).",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "functionCode": "const content = $json.choices?.[0]?.message?.content || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(content);\n} catch (e) {\n  parsed = { track: 'Other', metric: '', filters: {}, intent: 'descriptive', _parse_error: true, _raw: content };\n}\nreturn [{ json: parsed }];"
+        },
+        "id": "parse-intent-1",
+        "name": "Parse Intent JSON",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 2,
+        "position": [
+          -520,
+          0
+        ],
+        "notes": "Convierte la salida de OpenAI a JSON.",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "functionCode": "const payload = $json || {};\nconst errors = [];\nif(!['descriptive','comparison','trend','unknown'].includes((payload.intent||'').toString())) errors.push('invalid_intent');\nif(!payload.track) payload.track = 'Other';\nif(typeof payload.filters !== 'object') errors.push('filters_not_object');\nif(payload._parse_error) errors.push('parse_error_from_llm');\nif(errors.length) {\n  return [{ json: { _valid: false, errors } }];\n}\nreturn [{ json: { ...payload, _valid: true } }];"
+        },
+        "id": "validate-intent-1",
+        "name": "Validate Intent Schema",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 2,
+        "position": [
+          -360,
+          0
+        ],
+        "notes": "Validación básica de la intención/filters. Si falla, responde con mensaje seguro y no continúa a ejecución de consultas.",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "functionCode": "const inData = $json || {};\nif(inData._valid === false){\n  return [{ json: { error: 'invalid_intent_schema', details: inData.errors || [] } }];\n}\nconst cfg = $node[\"Set - Context & Placeholders\"].json || {};\nconst trackRaw = (inData.track || '').toString().toLowerCase();\nlet track = inData.track || 'Other';\nif (trackRaw.includes('fake') || trackRaw.includes('vidriera')) track = 'Fakes';\nif (trackRaw.includes('enhanced') || trackRaw === 'ec' || trackRaw.includes('ec')) track = 'Enhanced Content';\nconst f = inData.filters || {};\nconst filters = {\n  Fecha: f.Fecha || '',\n  Site: f.Site || 'all',\n  Vertical: f.Vertical || 'all',\n  Segmento: f.Segmento || 'all',\n  AGG1: f.AGG1 || '',\n  AGG2: f.AGG2 || '',\n  Domain: f.Domain || 'all',\n  Brand: f.Brand || 'all'\n};\nreturn [{\n  json: {\n    question: cfg.question || '',\n    track,\n    metric: inData.metric || '',\n    intent: inData.intent || 'descriptive',\n    filters,\n    openaiApiKey: cfg.openaiApiKey,\n    openaiModel: cfg.openaiModel,\n    tableauServer: cfg.tableauServer,\n    tableauSiteContentUrl: cfg.tableauSiteContentUrl,\n    tableauViewId: cfg.tableauViewId,\n    tableauPATName: cfg.tableauPATName,\n    tableauPATSecret: cfg.tableauPATSecret,\n    bqTable: cfg.bqTable,\n    bqProject: cfg.bqProject\n  }\n}];"
+        },
+        "id": "normalize-filters-1",
+        "name": "Normalize Filters",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 2,
+        "position": [
+          -180,
+          0
+        ],
+        "notes": "Normaliza track y defaults.",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "dataType": "string",
+          "value1": "={{$json.track}}",
+          "rules": [
+            {
+              "operation": "equal",
+              "value2": "Fakes"
+            },
+            {
+              "operation": "equal",
+              "value2": "Enhanced Content"
+            }
+          ]
+        },
+        "id": "switch-track-1",
+        "name": "Switch - Track",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 2,
+        "position": [
+          60,
+          0
+        ],
+        "notes": "Rutea a Fakes (Tableau) o Enhanced Content (BigQuery).",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "functionCode": "const cfg = $node[\"Normalize Filters\"].json || {};\nconst f = cfg.filters || {};\nconst where = [];\nif(f.Site && f.Site !== 'all') where.push(`Site = '${String(f.Site).replace(/'/g, \"\")}'`);\nif(f.Vertical && f.Vertical !== 'all') where.push(`Vertical = '${String(f.Vertical).replace(/'/g, \"\")}'`);\nif(f.Segmento && f.Segmento !== 'all') where.push(`Segmento = '${String(f.Segmento).replace(/'/g, \"\")}'`);\nif(f.Domain && f.Domain !== 'all') where.push(`Domain = '${String(f.Domain).replace(/'/g, \"\")}'`);\nif(f.Brand && f.Brand !== 'all') where.push(`Brand = '${String(f.Brand).replace(/'/g, \"\")}'`);\nif (f.Fecha && f.Fecha.includes(':')) {\n  const [start, end] = f.Fecha.split(':');\n  if (start) where.push(`Fecha >= '${String(start).replace(/'/g, \"\")}'`);\n  if (end) where.push(`Fecha <= '${String(end).replace(/'/g, \"\")}'`);\n}\nconst table = cfg.bqTable || '<BQ_TABLE>';\nconst sql = `SELECT * FROM \\`${table}\\`${where.length ? ' WHERE ' + where.join(' AND ') : ''} LIMIT 5000`;\nreturn [{ json: { ...cfg, sql } }];"
+        },
+        "id": "build-ec-sql-1",
+        "name": "Build EC SQL",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 2,
+        "position": [
+          300,
+          160
+        ],
+        "notes": "Construye SQL para EC con filtros. Sanitiza inputs.",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "projectId": "={{$json.bqProject}}",
+          "query": "={{$json.sql}}",
+          "options": {
+            "useLegacySql": false
+          }
+        },
+        "id": "bq-exec-1",
+        "name": "BigQuery - Execute",
+        "type": "n8n-nodes-base.googleBigQuery",
+        "typeVersion": 1,
+        "position": [
+          540,
+          160
+        ],
+        "notes": "Ejecuta query en BigQuery. Configure credenciales en n8n Credentials.",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "url": "https://api.openai.com/v1/chat/completions",
+          "method": "POST",
+          "sendBody": true,
+          "jsonParameters": true,
+          "bodyParametersJson": "={{ { model: $node[\"Set - Context & Placeholders\"].json.openaiModel, temperature: 0.2, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'Eres Melinda. Redacta respuesta ejecutiva en espanol, breve y clara. Usa SOLO los datos entregados. Si no hay datos, dilo explicitamente. Devuelve SOLO JSON con esta estructura exacta: {\"respuesta\":\"string\",\"bullets\":[\"string\"],\"tabla\":[],\"filtros\":{},\"fuente\":\"string\"}' }, { role: 'user', content: JSON.stringify({ question: $json.question, track: $json.track, intent: $json.intent, filters: $json.filters, source: $json.source, data: $json.data }) } ] } }}",
+          "headerParametersUi": {
+            "parameter": [
+              {
+                "name": "Authorization",
+                "value": "={{'Bearer ' + $node[\"Set - Context & Placeholders\"].json.openaiApiKey}}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "openai-answer-1",
+        "name": "OpenAI - Generate Answer",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4,
+        "position": [
+          1500,
+          0
+        ],
+        "notes": "Redacta respuesta ejecutiva. Configure OpenAI credential in n8n Credentials.",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "functionCode": "const content = $json.choices?.[0]?.message?.content || '{}';\nlet parsed;\ntry {\n  parsed = JSON.parse(content);\n} catch (e) {\n  parsed = { respuesta: 'No se pudo parsear la respuesta del modelo.', bullets: [], tabla: [], filtros: {}, fuente: 'N/A', _raw: content };\n}\nreturn [{ json: parsed }];"
+        },
+        "id": "parse-answer-1",
+        "name": "Parse Answer JSON",
+        "type": "n8n-nodes-base.function",
+        "typeVersion": 2,
+        "position": [
+          1720,
+          0
+        ],
+        "notes": "Parsea JSON generado por OpenAI.",
+        "notesInFlow": true
+      },
+      {
+        "parameters": {
+          "responseBody": "={{$json}}",
+          "responseCode": 200,
+          "options": {
+            "responseHeaders": {
+              "entries": [
+                {
+                  "name": "Content-Type",
+                  "value": "application/json"
+                }
+              ]
+            }
+          }
+        },
+        "id": "respond-1",
+        "name": "Respond to Webhook",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1,
+        "position": [
+          2140,
+          0
+        ],
+        "notes": "Respuesta final del webhook. Solo envía respuestas validadas.",
+        "notesInFlow": true
+      }
+    ],
+    "connections": {
+      "Webhook - Question": {
+        "main": [
+          [
+            [
+              {
+                "node": "Set - Context & Placeholders",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      },
+      "Set - Context & Placeholders": {
+        "main": [
+          [
+            [
+              {
+                "node": "OpenAI - Parse Intent",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      },
+      "OpenAI - Parse Intent": {
+        "main": [
+          [
+            [
+              {
+                "node": "Parse Intent JSON",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      },
+      "Parse Intent JSON": {
+        "main": [
+          [
+            [
+              {
+                "node": "Validate Intent Schema",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      },
+      "Validate Intent Schema": {
+        "main": [
+          [
+            [
+              {
+                "node": "Normalize Filters",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      },
+      "Normalize Filters": {
+        "main": [
+          [
+            [
+              {
+                "node": "Switch - Track",
+                "type": "main",
+                "index": 0
+              }
+            ],
+            [
+              {
+                "node": "Respond to Webhook",
+                "type": "main",
+                "index": 1
+              }
+            ]
+          ]
+        ]
+      },
+      "Switch - Track": {
+        "main": [
+          [
+            [
+              {
+                "node": "Build EC SQL",
+                "type": "main",
+                "index": 0
+              }
+            ],
+            [
+              {
+                "node": "Set - Context & Placeholders",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      },
+      "Build EC SQL": {
+        "main": [
+          [
+            [
+              {
+                "node": "BigQuery - Execute",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      },
+      "BigQuery - Execute": {
+        "main": [
+          [
+            [
+              {
+                "node": "OpenAI - Generate Answer",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      },
+      "OpenAI - Generate Answer": {
+        "main": [
+          [
+            [
+              {
+                "node": "Parse Answer JSON",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      },
+      "Parse Answer JSON": {
+        "main": [
+          [
+            [
+              {
+                "node": "Respond to Webhook",
+                "type": "main",
+                "index": 0
+              }
+            ]
+          ]
+        ]
+      }
+    },
+    "active": false,
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "versionId": "<REDACTED>",
+    "meta": {
+      "templateCredsSetupCompleted": false,
+      "instanceId": "<REDACTED>"
+    },
+    "id": "query__melinda_core",
+    "tags": []
+  }
+]
